@@ -20,8 +20,10 @@ impl< A: Debug + Actor + Send + 'static>  ActorContext<A> {
             
              let mut receiver = std::mem::replace(&mut self.receiver, mpsc::channel(1).1);
             while let Some(msg) = receiver.recv().await { 
-                let mut actor = self.actors.find_next();
+                let mut actor = self.actors.find_next().await;
                 let actor_clone = actor.clone();
+               let id = actor_clone.lock().await.id();
+                self.actors.update_load_map(id);
                 let handle = tokio::spawn(async move { 
                     
                     actor_clone.lock().await.handle(msg).await;

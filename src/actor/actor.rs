@@ -5,8 +5,10 @@ use log::info;
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 pub type ActorSafe<A: Actor + Send + 'static> = Arc<Mutex<A>>;
+pub type ActorId = Uuid;
 
 #[async_trait]
 pub trait Actor{
@@ -15,6 +17,7 @@ pub trait Actor{
     fn stopped(&mut self);
 
     async fn handle(&mut self, msg : Message);
+    fn id(&mut self) -> ActorId;
 } 
 
 

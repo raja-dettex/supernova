@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use supernova::actor::{actor::{Actor, ActorSafe, Message}, context::ActorContext, pool::ActorPool};
 /// use case of ping actor
 #[derive(Debug)]
-pub struct PingActor<id : std::marker::Send + Debug > { 
-    Id: id
+pub struct PingActor { 
+    Id: Uuid
 }
 
-impl<id: Send + Debug>  PingActor<id> { 
-    pub fn new(id : id) -> Self{ 
+impl PingActor { 
+    pub fn new(id : Uuid) -> Self{ 
         Self{Id: id}
     }
 }
@@ -18,9 +18,11 @@ use log::info;
 use tokio::sync::{mpsc::{self, Sender}, Mutex};
 
 #[async_trait]
-impl<id: std::marker::Send + Debug> Actor for PingActor<id> {
+impl Actor for PingActor {
+    fn id(&mut self) -> Uuid { 
+        self.Id
+    }
 
-    
     fn started(&mut self) { 
         info!("actor {:?} started", self.Id);
     }
@@ -38,38 +40,48 @@ impl<id: std::marker::Send + Debug> Actor for PingActor<id> {
 }
 
 
-fn setup_pool_and_sender() -> (ActorContext<PingActor<u32>>, Sender<Message>) { 
+fn setup_pool_and_sender() -> (ActorContext<PingActor>, Sender<Message>) { 
     let (sender, receiver) = mpsc::channel(20);
-    let mut pool: ActorPool<PingActor<u32>> = ActorPool::new();
+    let mut pool: ActorPool<PingActor> = ActorPool::new();
     for i in 1..10 { 
-        pool.add_actor(Arc::new(Mutex::new(PingActor::new(i as u32))));
+        pool.add_actor(Arc::new(Mutex::new(PingActor::new(Uuid::new_v4()))));
     }
     let ctx = ActorContext::new(pool, receiver);
     (ctx , sender)
 }
 
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use bencher::{benchmark_group, benchmark_main, Bencher};
+use uuid::Uuid;
 
 
-pub fn actor_benchmark(c : &mut Criterion) { 
+pub fn actor_benchmark(bencher : &mut Bencher) { 
     
-    c.bench_function("actor benchmark", |b| { 
-        b.iter(|| { 
-            let (mut ctx , sender ) = setup_pool_and_sender();
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async move { 
-                let handle = tokio::spawn(async move { 
-                    ctx.start().await;
-                });
-                
-                sender.send(Message::Custom(format!("message : 1"))).await.unwrap();
-                
-                handle.await.unwrap();
-            })
+    // c.warm_up_time(std::time::Duration::from_secs(1));
+    
+    bencher.iter(|| { 
+        let (mut ctx , sender ) = setup_pool_and_sender();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let h = rt.block_on(async move { 
+            let handle = tokio::spawn(async move { 
+                ctx.start().await;
+            });
+            
+            sender.send(Message::Custom(format!("message : 1"))).await.unwrap();
+            
+            handle.await.unwrap();
         });
     });
+    
 }
 
-criterion_group!(benches, actor_benchmark);
-criterion_main!(benches);
+pub fn test_bench(bencher : &mut Bencher) { 
+    bencher.iter(|| { 
+        for i in 1..=10 { 
+            println!("{}", i);
+        }
+    })
+}
+
+benchmark_group!(benches, test_bench);
+benchmark_main!(benches);
